@@ -59,54 +59,41 @@ void DBConnection::createTables() {
     printf("Checking tables...\n");
 
     boost::mysql::results r;
-    query("CREATE TABLE IF NOT EXISTS Updates (\
+    query("CREATE TABLE IF NOT EXISTS updates (\
+        id INT AUTO_INCREMENT PRIMARY KEY, \
         device_id INT, \
         facial_features BLOB(512), \
         time TIMESTAMP DEFAULT CURRENT_TIMESTAMP \
+    )", r);
+    query("CREATE TABLE IF NOT EXISTS short_term_state (\
+        id INT AUTO_INCREMENT PRIMARY KEY, \
+        mean_facial_features BLOB(512), \
+        last_update_device_id INT, \
+        last_update_time TIMESTAMP \
     )", r);
 
     printf("Done\n");
 
 }
-//
-//void DBConnection::getEntities(std::vector<Entity*> &vec) {
-//
-//    printf("Loading entities...\n");
-//
-//    try {
-//        boost::mysql::results result;
-//        _conn.execute("SELECT id, facial_features from Students", result);
-//        if (!result.empty()) {
-//            for (const boost::mysql::row_view& row : result.rows()) {
-//                int id = row.at(0).as_int64();
-//
-//                std::vector<int> schedule;
-//                boost::mysql::results scheduleResult;
-//                _conn.execute(_conn.prepare_statement("SELECT room_id FROM Schedules WHERE student_id=? ORDER BY period ASC").bind(id), scheduleResult);
-//                for (const boost::mysql::row_view& scheduleRow : scheduleResult.rows()) {
-//                    schedule.push_back(scheduleRow[0].as_int64());
-//                }
-//
-//                vec.push_back(new Entity(id, row.at(1).as_blob(), schedule));
-//            }
-//        }
-//    }
-//    catch (const boost::mysql::error_with_diagnostics& err) {
-//        std::cerr << "Error: " << err.what() << '\n'
-//            << "Server diagnostics: " << err.get_diagnostics().server_message() << std::endl;
-//    }
-//
-//    printf("Done\n");
-//
-//}
-//
-//void DBConnection::pushUpdate(int devId, const boost::span<UCHAR> facialFeatures) {
-//    try {
-//        boost::mysql::results result;
-//        _conn.execute(_conn.prepare_statement("INSERT INTO Updates (device_id, facial_features) VALUES(?, ?)").bind(devId, facialFeatures), result);
-//    }
-//    catch (const boost::mysql::error_with_diagnostics& err) {
-//        std::cerr << "Error: " << err.what() << '\n'
-//            << "Server diagnostics: " << err.get_diagnostics().server_message() << std::endl;
-//    }
-//}
+
+void DBConnection::getUpdates(std::vector<Update*> &updates) {
+    boost::mysql::results result;
+    query("SELECT id, device_id, facial_features FROM updates ORDER BY time ASC", result);
+    if (!result.empty()) {
+        for (const boost::mysql::row_view& row : result.rows()) {
+            updates.push_back(new Update(row[0].as_int64(), row[1].as_int64(), row[2].as_blob()));
+        }
+    }
+}
+
+
+void DBConnection::removeUpdate(int id) {
+    try {
+        boost::mysql::results result;
+        _conn.execute(_conn.prepare_statement("DELETE FROM updates WHERE id=?").bind(id), result);
+    }
+    catch (const boost::mysql::error_with_diagnostics& err) {
+        std::cerr << "Error: " << err.what() << '\n'
+            << "Server diagnostics: " << err.get_diagnostics().server_message() << std::endl;
+    }
+}

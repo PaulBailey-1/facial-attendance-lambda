@@ -7,6 +7,8 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/mysql/tcp_ssl.hpp>
 
+#include "Update.h"
+
 class DBConnection {
 public:
 
@@ -17,6 +19,8 @@ public:
     bool query(const char* sql, boost::mysql::results& result);
     
     void createTables();
+    void getUpdates(std::vector<Update*> &updates);
+    void removeUpdate(int id);
 
 private:
 
