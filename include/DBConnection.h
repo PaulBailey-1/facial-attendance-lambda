@@ -7,7 +7,7 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/mysql/tcp_ssl.hpp>
 
-#include "Update.h"
+#include "Objects.h"
 
 class DBConnection {
 public:
@@ -21,6 +21,7 @@ public:
     void createTables();
     void getUpdates(std::vector<Update*> &updates);
     void removeUpdate(int id);
+    void getLongTermState(std::vector<LongTermState*>& states);
 
 private:
 

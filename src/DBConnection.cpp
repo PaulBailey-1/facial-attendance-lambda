@@ -5,6 +5,7 @@
 #include <boost/mysql/handshake_params.hpp>
 #include <boost/mysql/results.hpp>
 #include <boost/system/system_error.hpp>
+#include <fmt/core.h>
 
 #include "DBConnection.h"
 
@@ -58,19 +59,31 @@ void DBConnection::createTables() {
 
     printf("Checking tables...\n");
 
+    const int face_bytes = FACE_VEC_SIZE * 4;
     boost::mysql::results r;
-    query("CREATE TABLE IF NOT EXISTS updates (\
+    query(fmt::format("CREATE TABLE IF NOT EXISTS updates (\
         id INT AUTO_INCREMENT PRIMARY KEY, \
         device_id INT, \
-        facial_features BLOB(512), \
+        facial_features BLOB({}), \
         time TIMESTAMP DEFAULT CURRENT_TIMESTAMP \
-    )", r);
-    query("CREATE TABLE IF NOT EXISTS short_term_state (\
+    )", face_bytes).c_str(), r);
+    // needs to include face vec variances
+    // needs expected dts between devs for periods
+    query(fmt::format("CREATE TABLE IF NOT EXISTS long_term_state (\
+        id INT AUTO_INCREMENT PRIMARY KEY, \
+        mean_facial_features BLOB({}) \
+    )", face_bytes).c_str(), r);
+    query(fmt::format("CREATE TABLE IF NOT EXISTS short_term_state (\
         id INT AUTO_INCREMENT PRIMARY KEY, \
         mean_facial_features BLOB(512), \
         last_update_device_id INT, \
-        last_update_time TIMESTAMP \
-    )", r);
+        last_update_time TIMESTAMP, \
+        expected_next_update_device_id INT, \
+        expected_next_update_time TIMESTAMP, \
+        expected_next_update_time_variance FLOAT(0), \
+        long_term_state_key INT, \
+        CONSTRAINT FK_lts FOREIGN KEY (long_term_state_key) REFERENCES long_term_state(id) \
+    )", face_bytes).c_str(), r);
 
     printf("Done\n");
 
@@ -95,5 +108,15 @@ void DBConnection::removeUpdate(int id) {
     catch (const boost::mysql::error_with_diagnostics& err) {
         std::cerr << "Error: " << err.what() << '\n'
             << "Server diagnostics: " << err.get_diagnostics().server_message() << std::endl;
+    }
+}
+
+void DBConnection::getLongTermState(std::vector<LongTermState*>& states) {
+    boost::mysql::results result;
+    query("SELECT id, facial_features FROM long_term_state", result);
+    if (!result.empty()) {
+        for (const boost::mysql::row_view& row : result.rows()) {
+            states.push_back(new LongTermState(row[0].as_int64(), row[1].as_blob()));
+        }
     }
 }
