@@ -22,6 +22,7 @@ public:
     void getUpdates(std::vector<Update*> &updates);
     void removeUpdate(int id);
     void getLongTermState(std::vector<LongTermState*>& states);
+    void createShortTermState(const Update* update);
 
 private:
 

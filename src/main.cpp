@@ -8,7 +8,6 @@
 DBConnection db;
 
 std::vector<LongTermState*> longTermState;
-std::vector<ShortTermState*> shortTermState;
 
 int facialMatch(const Update* update, std::vector<LongTermState*> &pool) {
     for (int i = 0; i < pool.size(); i++) {
@@ -29,17 +28,16 @@ bool processUpdate(const Update* update) {
     // match against who is probably there
     // match against who could be there
     // match against people seen
+    // int match = facialMatch(update, shortTermState);
     // match against people known
     int match = facialMatch(update, longTermState);
 
     if (match >= 0) {
-        
+        //if matched to short term, apply update, match to long term
+        // if matched to long term, create short term matched to long term
     } else {
-
+        db.createShortTermState(update);
     }
-    
-    // if matched, apply update to short-term state
-    // else create short term profile
 }
 
 int main() {

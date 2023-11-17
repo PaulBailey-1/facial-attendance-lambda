@@ -74,10 +74,10 @@ void DBConnection::createTables() {
         mean_facial_features BLOB({}) \
     )", face_bytes).c_str(), r);
     query(fmt::format("CREATE TABLE IF NOT EXISTS short_term_state (\
-        id INT AUTO_INCREMENT PRIMARY KEY, \
-        mean_facial_features BLOB(512), \
-        last_update_device_id INT, \
-        last_update_time TIMESTAMP, \
+        id INT AUTO_INCREMENT PRIMARY KEY NOT NULL, \
+        mean_facial_features BLOB(512) NOT NULL, \
+        last_update_device_id INT NOT NULL, \
+        last_update_time TIMESTAMP UPDATE CURRENT_TIMESTAMP NOT NULL, \
         expected_next_update_device_id INT, \
         expected_next_update_time TIMESTAMP, \
         expected_next_update_time_variance FLOAT(0), \
@@ -99,7 +99,6 @@ void DBConnection::getUpdates(std::vector<Update*> &updates) {
     }
 }
 
-
 void DBConnection::removeUpdate(int id) {
     try {
         boost::mysql::results result;
@@ -118,5 +117,20 @@ void DBConnection::getLongTermState(std::vector<LongTermState*>& states) {
         for (const boost::mysql::row_view& row : result.rows()) {
             states.push_back(new LongTermState(row[0].as_int64(), row[1].as_blob()));
         }
+    }
+}
+
+void DBConnection::createShortTermState(const Update* update) {
+    try {
+        boost::mysql::results result;
+        const boost::span<UCHAR> facialFeatures = boost::span<UCHAR>(reinterpret_cast<UCHAR*>(const_cast<float*>(update->facialFeatures.data())), update->facialFeatures.size() * sizeof(float));
+
+        _conn.execute(_conn.prepare_statement(
+                "INSERT INTO short_term_state (mean_facial_features, last_update_device_id) 
+                    VALUES(?,?)").bind(facialFeatures, update->id), result);
+    }
+    catch (const boost::mysql::error_with_diagnostics& err) {
+        std::cerr << "Error: " << err.what() << '\n'
+            << "Server diagnostics: " << err.get_diagnostics().server_message() << std::endl;
     }
 }
