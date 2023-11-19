@@ -1,41 +1,93 @@
 
 #include <iostream>
 #include <vector>
+#include <memory>
+#include <algorithm>
+
+#include <fmt/core.h>
 
 #include "DBConnection.h"
-#include "Objects.h"
+#include "EntityState.h"
 
 DBConnection db;
 
-std::vector<LongTermState*> longTermState;
-
-int facialMatch(const Update* update, std::vector<LongTermState*> &pool) {
-    for (int i = 0; i < pool.size(); i++) {
+EntityStatePtr facialMatch(EntityStatePtr update, const std::vector<EntityStatePtr>& pool) {
+    for (const EntityStatePtr &cmp : pool) {
         float l2norm = 0.0;
         for (int j = 0; j < FACE_VEC_SIZE; j++) {
-            l2norm += pow(update->facial_features[j] - pool[i]->facial_features[j], 2);
+            l2norm += pow(update->facialFeatures[j] - cmp->facialFeatures[j], 2);
         }
         l2norm /= FACE_VEC_SIZE;
-        // this should be using the variance
+        // TODO: this should be using the variance
         if (l2norm < 0.01) {
-            return i;
+            return cmp;
         }
     }
-    return -1;
+    return nullptr;
 }
 
-bool processUpdate(const Update* update) {
+void applyUpdate(ShortTermStatePtr state, UpdateCPtr update) {
+    // TODO: optimally fuse facial features
+    state->lastUpdateDeviceId = update->deviceId;
+}
+
+void processUpdate(UpdatePtr update) {
+
+    fmt::print("Proccessing update from device {}\n", update->deviceId);
+
+    EntityStatePtr updateState = std::static_pointer_cast<EntityState>(update);
+    EntityStatePtr match = nullptr;
+
+    std::vector<EntityStatePtr> shortTermStates;
+    db.getShortTermStates(shortTermStates);
+
+    std::vector<EntityStatePtr> longTermStates;
+    db.getLongTermStates(longTermStates);
+
     // match against who is probably there
     // match against who could be there
-    // match against people seen
-    // int match = facialMatch(update, shortTermState);
-    // match against people known
-    int match = facialMatch(update, longTermState);
 
-    if (match >= 0) {
+    // match against people seen
+    match = facialMatch(updateState, shortTermStates);
+
+    if (match != nullptr) {
+
+        fmt::print("Match found in short term states\n");
+
         //if matched to short term, apply update, match to long term
-        // if matched to long term, create short term matched to long term
+        ShortTermStatePtr stMatch = std::static_pointer_cast<ShortTermState>(match);
+        applyUpdate(stMatch, update);
+
+        LongTermStatePtr ltMatch = std::static_pointer_cast<LongTermState>(facialMatch(stMatch, longTermStates));
+        if (ltMatch != nullptr) {
+            stMatch->longTermStateKey = ltMatch->id;
+        }
+
+        db.updateShortTermState(stMatch);
+        
     } else {
+        // match against people known
+        // may not want to do this exclusion
+        std::vector<EntityStatePtr> newPool;
+        std::sort(shortTermStates.begin(), shortTermStates.end(),
+            [] (const EntityStatePtr& a, const EntityStatePtr& b) {
+                return std::static_pointer_cast<ShortTermState>(a)->longTermStateKey < std::static_pointer_cast<ShortTermState>(b)->longTermStateKey;
+        });
+        std::set_difference(longTermStates.begin(), longTermStates.end(), shortTermStates.begin(), shortTermStates.end(), std::back_inserter(newPool), 
+            [](const EntityStatePtr& a, const EntityStatePtr& b) {
+                return std::static_pointer_cast<LongTermState>(a)->id < std::static_pointer_cast<ShortTermState>(b)->longTermStateKey;
+        });
+        match = facialMatch(updateState, newPool);
+
+        // if matched to long term, create short term matched to long term
+        if (match != nullptr) {
+            fmt::print("Match found in long term states\n");
+            db.createShortTermState(update, std::static_pointer_cast<LongTermState>(match));
+        }
+    }
+
+    if (match == nullptr) {
+        fmt::print("No match found\n");
         db.createShortTermState(update);
     }
 }
@@ -43,19 +95,19 @@ bool processUpdate(const Update* update) {
 int main() {
 
     db.connect();
-    db.getLongTermState(longTermState);
+    db.createTables();
 
-    std::vector<Update*> updates;
+    std::vector<UpdatePtr> updates;
     while (1) {
         db.getUpdates(updates);
         if (updates.size() == 0) break;
+        fmt::print("Got {} updates\n", updates.size());
         for (auto i = updates.begin(); i != updates.end(); i++) {
-            if (processUpdate(*i)) {
-                db.removeUpdate((*i)->id);
-                delete *i;
-                updates.erase(i);
-            }
+            processUpdate(*i);
+            //db.removeUpdate((*i)->id);
         }
+        updates.clear();
+        break;
     }
     
     return 0;

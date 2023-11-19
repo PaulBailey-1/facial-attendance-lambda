@@ -7,7 +7,7 @@
 #include <boost/asio/ssl/context.hpp>
 #include <boost/mysql/tcp_ssl.hpp>
 
-#include "Objects.h"
+#include "EntityState.h"
 
 class DBConnection {
 public:
@@ -19,10 +19,12 @@ public:
     bool query(const char* sql, boost::mysql::results& result);
     
     void createTables();
-    void getUpdates(std::vector<Update*> &updates);
+    void getUpdates(std::vector<UpdatePtr> &updates);
     void removeUpdate(int id);
-    void getLongTermState(std::vector<LongTermState*>& states);
-    void createShortTermState(const Update* update);
+    void getLongTermStates(std::vector<EntityStatePtr>& states);
+    void getShortTermStates(std::vector<EntityStatePtr>& states);
+    void createShortTermState(UpdateCPtr update, LongTermStatePtr ltState = nullptr);
+    void updateShortTermState(ShortTermStatePtr state);
 
 private:
 
